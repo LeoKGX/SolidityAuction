@@ -26,7 +26,7 @@ contract Auction {
 
 //  CONSTANTES 
     uint256 private constant MIN_INCREASE = 5;             // Minimum percentage of change for a bid to be valid, in this case 5%.
-    uint256 private constant AUCTION_TIME = 12 minutes;    // Duration of the auction, in this case 12 minutes
+    uint256 private constant AUCTION_TIME = 2 days;        // Duration of the auction, in this case 2 days
     uint256 private constant EXTENSION_TIME = 10 minutes;  // Time that the auction is extended within the last 10 minutes, in this case 10 minutes
     uint256 private constant COMMISSION = 2;               // Percentage of commission that the contract will keep
 
