@@ -23,14 +23,15 @@ contract Auction {
     uint256 private bestOffer;     // Current highest bidder
     uint256 private limitTime;     // Timestamp at which the auction ends (varies depending on when the contract is deployed)
     bool    private auctionClosed; // Used to determine if the auction ended
-
-//  CONSTANTES 
+    bool    private isStopped;     //Used to determine if the auction was stopped in case of emergency
+    
+//  CONSTANTS 
     uint256 private constant MIN_INCREASE = 5;             // Minimum percentage of change for a bid to be valid, in this case 5%.
-    uint256 private constant AUCTION_TIME = 2 days;        // Duration of the auction, in this case 2 days
+    uint256 private constant AUCTION_TIME = 5 days;        // Duration of the auction, in this case 12 minutes
     uint256 private constant EXTENSION_TIME = 10 minutes;  // Time that the auction is extended within the last 10 minutes, in this case 10 minutes
     uint256 private constant COMMISSION = 2;               // Percentage of commission that the contract will keep
 
-//MAPEOS Y ARREGLOS
+// MAPPINGS AND ARRAYS
     mapping(address => OfferInfo) private bidders;        // Mapping of address to their balance and last offer
     address[] private bidderList;                         // Array of all addresses that participated in the auction
 
@@ -48,6 +49,14 @@ contract Auction {
     // winOffer       Amount of the winning offer
     event AuctionEnded(address indexed winner, uint256 winOffer);
 
+    // AuctionStopped() Emmited everytime the auction it's Stopped
+    // time when the action happened
+    event AuctionStopped(uint256 time);
+
+    
+    // AuctionResumed() Emmited everytime the auction it's Resumed
+    // time when the action happened
+    event AuctionResumed(uint256 time);
 
 //MODIFIERS
 
@@ -57,9 +66,16 @@ contract Auction {
         _;
     }
 
-    // isActive() Checks if the auction is still active
+    // isActive() Checks if the auction is still active and Not Stopped
     modifier isActive() {
         require(block.timestamp < limitTime, "Auction Closed");
+        require(!isStopped, "Auction STOPPED");
+        _;
+    }
+
+    // isNotActive() Checks if the auction is still active
+    modifier isNotActive() {
+        require(block.timestamp > limitTime, "Auction still active");
         _;
     }
 
@@ -73,7 +89,13 @@ contract Auction {
         }
         _;
     }
-
+    
+    // Checks that the auction its stopped
+    modifier onlyWhenStopped {
+        require(isStopped, "Auction Not Stopped");
+        _;
+    }
+    
 //CONSTRUCTOR
     // Designates owner who builds the contract and
     // designates limitTime as the creation time plus the constant AUCTION_TIME
@@ -85,9 +107,20 @@ contract Auction {
 
 //FUNCTIONS
 
+    //stopContract() Stops the contract and emits an event with the timestamp
+    function stopContract() public onlyOwner {
+        isStopped = true;
+        emit AuctionStopped(block.timestamp);
+    }
+
+    //resumeContract() resumes the contract and emits an event with the timestamp
+    function resumeContract() public onlyOwner {
+        isStopped = false;
+        emit AuctionResumed(block.timestamp);
+    }
     // bid() Checks that the auction is active and the bid is valid (with modifiers)
     // It is to send a bid by sending ETH to the contract
-    function bid() external payable isActive isValidOffer {
+    function bid() external payable isActive isValidOffer{
 
         OfferInfo storage info = bidders[msg.sender];
 
@@ -132,27 +165,32 @@ contract Auction {
 
     // withdrawFinalized()
     // Is for each person except the winner of the auction to withdraw the losing bids by deducting the COMMISSION
-    function withdrawFinalized() external  {
+    function withdrawFinalized() external isNotActive onlyOwner{
         // Checks if the auction ended
-        require(block.timestamp > limitTime, "Auction still active");
-        // Checks that you're not the winner
-        require(msg.sender != bestBidder, "Winner can't withdraw");
+        uint256 count = bidderList.length;
 
-        OfferInfo storage info = bidders[msg.sender];
-        require(info.deposit > 0 , "Nothing to withdraw");
-        // If you have deposited ETH calculate the payment discounting COMMISSION
-        uint256 pay = (info.deposit * (100 - COMMISSION)) / 100;
-        // Update balance and send the payment
-        bidders[msg.sender].deposit = 0;
-        (bool ok, ) = msg.sender.call{value: pay}("");
-        require(ok, "Transfer Failed");
-
+        for (uint256 i = 0; i < count; i++) {
+            address repayAdd = bidderList[i];
+            // If the address is the winner don't return the money
+            if (repayAdd == bestBidder){
+                continue;
+            }
+            // If you have deposited ETH calculate the payment discounting COMMISSION
+            uint256 pay = (bidders[repayAdd].deposit * (100 - COMMISSION)) / 100;
+            // Update balance and send the payment
+            bidders[repayAdd].deposit = 0;
+            (bool ok, ) = repayAdd.call{value: pay}("");
+            require(ok, "Transfer Failed");
+        }
+        
         // Emits the AuctionEnded() event one time
         if (!auctionClosed) {
             emit AuctionEnded(bestBidder, bestOffer);
-            auctionClosed == true;
+            auctionClosed = true;
         }
-        
+        // Send the commission and the winning bid to the owner of the contract 
+        (bool ok2, ) = msg.sender.call{value: address(this).balance}("");
+        require(ok2, "Transfer Failed");
     }
 
     // getWinner() Returns the best bidder and the best offer in ETH
@@ -160,7 +198,7 @@ contract Auction {
         return (bestBidder, (bestOffer/ 1000000000000000000));
     }
 
-    // getOffers() Return all bidders and all bids in ETH
+    // getOffers() Return all bidders and all bids in ETH 
     function getOffers() external view returns (address[] memory addresses, uint256[] memory amounts) {
         uint256 count = bidderList.length;
         addresses = new address[](count);
@@ -178,5 +216,9 @@ contract Auction {
         return (block.timestamp >= limitTime) ? 0 : limitTime - block.timestamp;
     }
 
-
+    // emergencyWithdraw() Transfer all funds of the contract to the contract owner in case of emergency
+    function emergencyWithdraw() external onlyWhenStopped onlyOwner{
+        (bool success, ) = msg.sender.call{value: address(this).balance}("");
+        require(success, "Transfer Failed");
+    }
 }
