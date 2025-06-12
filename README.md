@@ -27,7 +27,8 @@ The contract is for auctions where:
    Timestamp at which the auction ends (varies depending on when the contract is displayed)
 ### auctionClosed       
    Used to determine if the auction ended
-
+### isStopped
+   Used to determine if the auction was stopped in case of emergency
       
 ## CONSTANTS 
 ### MIN_INCREASE
@@ -46,7 +47,7 @@ The contract is for auctions where:
    Mapping of all addresses that participated in the auction
 
 ## EVENTS
-### NewOffer()
+### NewOffer(address indexed bidder, uint256 offer, uint256 newTime)
    Emitted each time a new valid bid is placed by a participant.
 - bidder   
    Bidder's address Indexed for searches
@@ -54,13 +55,23 @@ The contract is for auctions where:
    Amount of the new bid
 - newTime   
    New time limit
-      
-### AuctionEnded() 
+  
+### AuctionEnded(address indexed winner, uint256 winOffer) 
    Emitted when the auction has ended
 - winner    
-   Winner's address
+   Winner's indexed address
 - winOffer    
    Amount of the winning bid
+
+### AuctionStopped(uint256 time) 
+   Emmited everytime the auction it's Stopped
+- time
+    when the action happened
+
+### AuctionResumed(uint256 time) 
+   Emmited everytime the auction it's Resumed
+- time
+   when the action happened
 
 ## MODIFIERS
 ### onlyOwner() 
@@ -72,27 +83,37 @@ The contract is for auctions where:
 ### isValidOffer() 
    Checks if the bid is valid
 
+### onlyWhenStopped()
+   Checks that the auction its stopped
+
 
 ## BUILDER
   Designates owner who builds the contract and designates limitTime as the creation time plus the constant AUCTION_TIME.
 
 ## FUNCTIONS
-### bid() 
+
+### stopContract() public onlyOwner 
+   Stops the contract and emits an event with the timestamp
+
+### resumeContract() public onlyOwner
+   resumes the contract and emits an event with the timestamp
+
+### bid() public
    Checks that the auction is active and the bid is valid (with modifiers).
    It is to send a bid by sending ETH to the contract.
 
 
-### partialRefund() Only while the auction is active (modifier isActive)
+### partialRefund() external isActive
    This is to withdraw the deposit left in the contract after bidding several times.
 
-### withdrawFinalized()
+### withdrawFinalized() external isNotActive onlyOwner
    Is for each person except the winner of the auction to withdraw the losing bids by deducting the COMMISSION.
 
-### getWinner() 
+### getWinner() external view returns (address, uint256)
    Returns the best bidder and the best offer in ETH.
     
-### getOffers() 
+### getOffers() external view returns (address[] memory addresses, uint256[] memory amounts)
    Return all bidders and all bids in ETH
 
-### getTimeLeft()
+### getTimeLeft() external view returns (uint256)
    Returns, in seconds, the time left in the auction 
